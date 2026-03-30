@@ -1,0 +1,71 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install ruff
+      - run: ruff check runtime/ tests/
+
+  test:
+    runs-on: ubuntu-latest
+    needs: lint
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: pip install -e ".[dev]"
+      - run: pytest tests/ -v --tb=short
+
+  validate-plugin:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: |
+          python -c "
+          import json
+          from pathlib import Path
+
+          config = json.loads(Path('plugin.json').read_text())
+          errors = []
+
+          # Check agents
+          for agent in config['agents']:
+              if not (Path('agents') / agent / 'agent.md').is_file():
+                  errors.append(f'Missing agent: {agent}')
+
+          # Check skills
+          for skill in config['skills']:
+              if not (Path('skills') / skill / 'SKILL.md').is_file():
+                  errors.append(f'Missing skill: {skill}')
+
+          # Check data
+          for name, entry in config.get('data', {}).items():
+              if not Path(entry['file']).is_file():
+                  errors.append(f'Missing data: {name} -> {entry[\"file\"]}')
+
+          if errors:
+              for e in errors:
+                  print(f'ERROR: {e}')
+              raise SystemExit(1)
+          else:
+              print(f'Plugin valid: {len(config[\"agents\"])} agents, {len(config[\"skills\"])} skills')
+          "

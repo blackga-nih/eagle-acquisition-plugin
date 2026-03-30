@@ -1,250 +1,218 @@
-# EAGLE Plugin - NCI Acquisition Assistant
+# EAGLE Acquisition Plugin
 
 **E**nterprise **A**cquisitions **G**uidance & **L**ogistics **E**ngine
 
-A unified OpenClaw plugin for the NCI Office of Acquisitions, combining the best practices from federal acquisition expertise into a single-agent architecture with specialized skills.
+NCI Office of Acquisitions plugin — 25 skills, 6 agents, full federal procurement lifecycle. Built on Strands Agents SDK with BedrockModel for supervisor-orchestrated multi-agent workflows.
 
 ## Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                    EAGLE Supervisor Agent                    │
-│                  (Intent Detection & Routing)                │
-└─────────────────────────────────────────────────────────────┘
-                              │
-        ┌─────────────────────┼─────────────────────┐
-        │                     │                     │
-        ▼                     ▼                     ▼
-┌───────────────┐    ┌───────────────┐    ┌───────────────┐
-│   OA Intake   │    │   Document    │    │  Compliance   │
-│    Skill      │    │   Generator   │    │    Skill      │
-└───────────────┘    └───────────────┘    └───────────────┘
-        │                     │                     │
-        ▼                     ▼                     ▼
-┌───────────────┐    ┌───────────────┐
-│  Knowledge    │    │  Tech Review  │
-│  Retrieval    │    │    Skill      │
-└───────────────┘    └───────────────┘
+│              (Intent Detection, Routing, Tools)              │
+└──────────┬──────────────────────────────────────────────────┘
+           │
+     ┌─────┴─────────────────────────────────────┐
+     │              5 Specialist Agents            │
+     ├── legal-counsel      Policy/legal analysis  │
+     ├── market-intelligence Vendor/market research │
+     ├── tech-translator    Technical requirements  │
+     ├── public-interest    Fairness/accessibility  │
+     └── policy            KB quality + regulatory  │
+           │
+     ┌─────┴─────────────────────────────────────┐
+     │              25 Skills (AgentSkills)        │
+     │  Progressive disclosure: metadata → full    │
+     │  instructions → resources on demand         │
+     └────────────────────────────────────────────┘
+           │
+     ┌─────┴─────────────────────────────────────┐
+     │         25 Service Tools (@tool)            │
+     │  Wired to ServiceRegistry → backend         │
+     │  handlers (standalone or sm_eagle)           │
+     └────────────────────────────────────────────┘
 ```
-
-## Prerequisites
-
-### Required Environment Variables
-
-The plugin uses Claude Code's tools to interact with AWS. Set these in your environment:
-
-```bash
-# AWS Credentials (for S3 document storage, DynamoDB intake tracking)
-export AWS_ACCESS_KEY_ID=your_access_key
-export AWS_SECRET_ACCESS_KEY=your_secret_key
-export AWS_DEFAULT_REGION=us-east-1
-
-# Or use AWS CLI configuration
-aws configure
-```
-
-### AWS Resources Needed
-
-| Resource | Purpose | Required |
-|----------|---------|----------|
-| S3 Bucket | Document storage (SOW, IGCE, etc.) | Yes |
-| DynamoDB Table | Intake record tracking | Optional |
-| CloudWatch Logs | Activity logging | Optional |
-
-**Minimal Setup (S3 only):**
-```bash
-# Create an S3 bucket for documents
-aws s3 mb s3://your-eagle-documents --region us-east-1
-```
-
-**Full Setup:**
-```bash
-# S3 bucket
-aws s3 mb s3://your-eagle-documents --region us-east-1
-
-# DynamoDB table (single-table design)
-aws dynamodb create-table \
-  --table-name eagle \
-  --attribute-definitions \
-    AttributeName=PK,AttributeType=S \
-    AttributeName=SK,AttributeType=S \
-  --key-schema \
-    AttributeName=PK,KeyType=HASH \
-    AttributeName=SK,KeyType=RANGE \
-  --billing-mode PAY_PER_REQUEST \
-  --region us-east-1
-```
-
-### IAM Permissions
-
-The AWS user/role needs these permissions:
-```json
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Effect": "Allow",
-      "Action": ["s3:GetObject", "s3:PutObject", "s3:ListBucket"],
-      "Resource": ["arn:aws:s3:::your-eagle-documents", "arn:aws:s3:::your-eagle-documents/*"]
-    },
-    {
-      "Effect": "Allow",
-      "Action": ["dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:Query", "dynamodb:UpdateItem"],
-      "Resource": "arn:aws:dynamodb:*:*:table/eagle"
-    }
-  ]
-}
-```
-
-### No API Key Needed in Plugin
-
-The plugin is just markdown instructions. Claude Code handles the Anthropic API key separately via:
-- `ANTHROPIC_API_KEY` environment variable, or
-- Claude Code's built-in authentication
-
----
 
 ## Quick Start
 
-### Slash Commands
+```python
+from runtime.strands import build_supervisor, ServiceConfig, configure
 
-| Command | Description |
-|---------|-------------|
-| `/intake` | Start a new acquisition request |
-| `/document <type>` | Generate SOW, IGCE, AP, or J&A |
-| `/search <query>` | Search FAR/DFAR regulations |
-| `/status` | Check intake package completeness |
+# Standalone (tools return informative errors)
+supervisor = build_supervisor(tenant_id="nci-oa", user_id="john.doe@nih.gov")
+result = supervisor("I need to buy a CT scanner for $500K")
 
-### Example Conversations
-
-**Starting an Acquisition:**
-```
-User: I need to purchase a CT scanner for our research facility
-EAGLE: I can help with that! Let me ask a few questions...
-       - What's the estimated cost?
-       - When do you need it?
-       - Do you have a specific vendor in mind?
-```
-
-**Searching Regulations:**
-```
-User: /search sole source justification requirements
-EAGLE: Found 5 relevant FAR sections...
-       1. FAR 6.302 - Circumstances Permitting Other Than Full Competition
-       2. FAR 6.303 - Justifications (J&A)
-       ...
+# With AWS backends
+configure(ServiceConfig(s3_bucket="eagle-docs", dynamodb_table="eagle", region="us-east-1"))
+supervisor = build_supervisor(tenant_id="nci-oa", user_id="john.doe@nih.gov")
 ```
 
 ## Plugin Structure
 
 ```
-eagle-plugin/
-├── plugin.json                     # Plugin manifest
-├── README.md                       # This documentation
+eagle-acquisition-plugin/
+├── plugin.json                    # Manifest — 25 skills, 6 agents, data index
+├── command-registry.json          # 34 slash commands for frontend routing
 │
-├── agent/
-│   └── supervisor.md               # Single orchestrator agent
+├── agents/                        # 6 agents (supervisor + 5 specialists)
+│   ├── supervisor/agent.md        # Main orchestrator
+│   ├── legal-counsel/agent.md     # Legal/J&A guidance
+│   ├── market-intelligence/agent.md # Vendor/market research
+│   ├── tech-translator/agent.md   # Technical requirements
+│   ├── public-interest/agent.md   # Fairness/accessibility
+│   └── policy/agent.md            # KB quality + regulatory intelligence
 │
-├── skills/
-│   ├── oa-intake/
-│   │   └── SKILL.md               # Acquisition intake workflow
-│   ├── document-generator/
-│   │   └── SKILL.md               # SOW, IGCE, AP, J&A generation
-│   ├── compliance/
-│   │   └── SKILL.md               # FAR/DFAR compliance, vehicle search
-│   ├── knowledge-retrieval/
-│   │   └── SKILL.md               # Knowledge base search
-│   └── tech-review/
-│       └── SKILL.md               # Technical requirements validation
+├── skills/                        # 25 skills (SKILL.md with YAML frontmatter)
+│   ├── oa-intake/                 # Acquisition intake workflow
+│   ├── document-generator/        # SOW, IGCE, AP, J&A, MRR generation
+│   ├── compliance/                # FAR/DFARS/HHSAR compliance
+│   ├── compliance-matrix/         # Decision tree — thresholds, vehicles
+│   ├── knowledge-retrieval/       # KB search (DynamoDB + S3)
+│   ├── tech-review/               # Technical spec validation
+│   ├── ingest-document/           # Document upload/processing
+│   ├── admin-manager/             # Skill/prompt/template management
+│   ├── admin-diagnostics/         # System health, Langfuse traces
+│   ├── package-manager/           # Acquisition package CRUD
+│   ├── package-finalizer/         # Package completeness validation
+│   ├── edit-document/             # Targeted DOCX revisions
+│   ├── document-history/          # Version history, changelog
+│   ├── html-report/               # Interactive HTML reports
+│   ├── skill-discovery/           # Progressive disclosure registry
+│   ├── web-research/              # KB→matrix→web cascade
+│   ├── eval-criteria/             # Evaluation criteria builder
+│   ├── cost-analysis/             # Cost/price analysis
+│   ├── solicitation-builder/      # RFP/RFQ/RFI package assembly
+│   ├── small-business-analysis/   # FAR Part 19 set-aside analysis
+│   ├── far-reference/             # FAR/DFARS lookup with cross-refs
+│   ├── clause-selector/           # FAR 52 clause selection engine
+│   ├── contract-vehicles/         # GSA, NITAAC, BPA recommendations
+│   ├── acquisition-glossary/      # Term definitions with FAR citations
+│   └── risk-assessment/           # 5-dimension risk analysis
 │
-├── commands/
-│   ├── intake.md                  # /intake slash command
-│   ├── document.md                # /document slash command
-│   ├── search.md                  # /search slash command
-│   └── status.md                  # /status slash command
+├── runtime/                       # Python runtime
+│   └── strands/
+│       ├── __init__.py            # Exports: build_supervisor, configure, ServiceConfig
+│       ├── agent_factory.py       # Strands Agent builder with AgentSkills plugin
+│       ├── plugin_loader.py       # plugin.json, data files, SKILL_AGENT_REGISTRY
+│       ├── services.py            # ServiceRegistry — configurable backend dispatch
+│       ├── tool_definitions.py    # 25 @tool functions wired to ServiceRegistry
+│       └── backends/              # Backend handler implementations
+│           ├── web.py             # web_search (Bedrock Nova), web_fetch (httpx+bs4)
+│           ├── documents.py       # create_document, edit_docx, generate_html
+│           ├── packages.py        # manage_package, finalize, changelog, latest
+│           ├── knowledge.py       # knowledge_search, knowledge_fetch
+│           ├── intake.py          # intake_workflow state machine
+│           ├── aws_ops.py         # s3_document_ops, dynamodb_intake, cloudwatch
+│           ├── admin.py           # manage_skills, manage_prompts, manage_templates
+│           └── diagnostics.py     # langfuse_traces
 │
-├── data/
-│   ├── far-database.json          # 53+ FAR entries
-│   ├── thresholds.json            # Dollar thresholds
+├── data/                          # Reference data
+│   ├── far-database.json          # FAR entries for search_far tool
+│   ├── thresholds.json            # Dollar thresholds (micro-purchase, SAT, etc.)
 │   ├── contract-vehicles.json     # NIH IDIQs, GSA schedules, BPAs
-│   └── templates/
-│       ├── sow-template.md
-│       ├── igce-template.md
-│       ├── acquisition-plan-template.md
-│       ├── justification-template.md
-│       └── market-research-template.md
+│   └── matrix.json                # Compliance decision matrix
 │
-└── tools/
-    └── tool-definitions.json      # Anthropic tool_use format definitions
+├── tests/                         # Test suite (31 tests)
+│   ├── test_plugin_discovery.py   # plugin.json, frontmatter, file existence
+│   ├── test_service_registry.py   # ServiceRegistry + plugin_loader registries
+│   └── test_tool_definitions.py   # Tool wiring, dispatch, no stubs remaining
+│
+├── .github/workflows/ci.yml      # Lint → Test → Validate pipeline
+├── pyproject.toml                 # Build config, deps, ruff + pytest settings
+├── LICENSE                        # CC0-1.0
+├── CONTRIBUTING.md                # Contribution guide
+└── .gitignore
 ```
 
-## Skills Overview
+## ServiceRegistry Pattern
 
-### OA Intake
-Guides users through the acquisition intake process like a knowledgeable contract specialist ("Trish" philosophy). Collects minimal information upfront, asks smart follow-ups, and determines the optimal acquisition pathway.
+Tools use a `ServiceRegistry` for backend dispatch. This allows the plugin to work in two modes:
 
-### Document Generator
-Creates acquisition documents including:
-- Statement of Work (SOW)
-- Independent Government Cost Estimate (IGCE)
-- Acquisition Plan (FAR 7.105)
-- Justification & Approval (J&A)
-- Market Research Report
+**Standalone** — Tools return informative errors explaining what AWS config is needed:
+```json
+{"error": "aws_not_configured", "tool": "knowledge_search", "setup_hint": "..."}
+```
 
-### Compliance
-Ensures FAR/DFAR compliance by:
-- Searching the regulation database
-- Identifying required clauses
-- Recommending contract vehicles
-- Checking socioeconomic requirements
+**Integrated (sm_eagle)** — The registry is configured with real AWS clients:
+```python
+from runtime.strands.services import configure, ServiceConfig
 
-### Knowledge Retrieval
-Searches the knowledge base for:
-- Policies and procedures
-- Past acquisition precedents
-- Regulatory guidance
-- Technical documentation
+configure(ServiceConfig(
+    s3_bucket="eagle-docs",
+    dynamodb_table="eagle",
+    region="us-east-1",
+))
+```
 
-### Tech Review
-Validates technical requirements:
-- Specification completeness
-- Installation requirements
-- Training/support needs
-- Section 508 accessibility
+**Override** — Individual handlers can be replaced for custom backends:
+```python
+from runtime.strands.services import get_registry
+
+def my_custom_search(config, **params):
+    return {"results": [...]}
+
+get_registry().override("knowledge_search", my_custom_search)
+```
+
+## Slash Commands
+
+34 commands for frontend routing (see `command-registry.json`):
+
+| Command | Routes To | Description |
+|---------|-----------|-------------|
+| `/intake` | oa-intake | Start acquisition intake |
+| `/document:SOW` | document-generator | Draft a Statement of Work |
+| `/document:IGCE` | document-generator | Draft an IGCE |
+| `/document:AP` | document-generator | Draft an Acquisition Plan |
+| `/compliance:FAR` | compliance | Search FAR clauses |
+| `/matrix` | compliance-matrix | Query decision engine |
+| `/package` | package-manager | Create/manage packages |
+| `/research` | web-research | KB→matrix→web cascade |
+| `/cost` | cost-analysis | Price analysis |
+| `/eval` | eval-criteria | Evaluation criteria |
+| `/skills` | skill-discovery | List available skills |
+| `/admin` | admin-diagnostics | System diagnostics |
+
+## Development
+
+```bash
+# Install
+pip install -e ".[dev,web]"
+
+# Test
+pytest tests/ -v
+
+# Lint
+ruff check runtime/ tests/
+
+# Verify plugin integrity
+python -c "
+from runtime.strands.plugin_loader import SKILL_AGENT_REGISTRY, load_plugin_config
+config = load_plugin_config()
+print(f'{len(config[\"skills\"])} skills, {len(config[\"agents\"])} agents')
+print(f'{len(SKILL_AGENT_REGISTRY)} entries in registry')
+"
+```
 
 ## Key Thresholds
 
-| Threshold | Amount | Significance |
-|-----------|--------|--------------|
-| Micro-Purchase (MPT) | $10,000 | Minimal documentation, purchase card |
-| Simplified (SAT) | $250,000 | FAR Part 13 procedures |
-| Sole Source 8(a) Services | $4,500,000 | Competition required above |
-| Sole Source 8(a) Manufacturing | $7,000,000 | Competition required above |
-| Cost/Pricing Data (TINA) | $2,000,000 | Certified data required |
-| Major Acquisition Plan | $7,000,000 | Written AP required |
+| Threshold | Amount | Reference |
+|-----------|--------|-----------|
+| Micro-Purchase | $10,000 | FAR 2.101 |
+| Simplified (SAT) | $250,000 | FAR 2.101 |
+| Sole Source 8(a) Services | $4,500,000 | FAR 19.805-1 |
+| Sole Source 8(a) Manufacturing | $7,000,000 | FAR 19.805-1 |
+| Cost/Pricing Data (TINA) | $2,000,000 | FAR 15.403-4 |
+| Subcontracting Plan | $750,000 | FAR 19.702 |
 
-## Integration
+## Requirements
 
-### AWS Services
-- **S3**: Document storage (`nci-documents` bucket)
-- **DynamoDB**: Intake tracking (`eagle` table)
-
-### API Tools
-All tools follow the Anthropic `tool_use` format for seamless Claude integration. See `tools/tool-definitions.json` for the complete schema.
-
-## Philosophy: "Think Like Trish"
-
-This plugin embodies the expertise of a senior contracting officer who:
-1. **Starts minimal** - Collects just enough information to begin
-2. **Asks smart follow-ups** - Based on user answers, not a rigid form
-3. **Determines the path** - Acquisition type and required documents
-4. **Guides to completion** - Helps generate each required document
-5. **Documents everything** - Maintains defensible decision rationale
-
-## Contributing
-
-See the main repository README for contribution guidelines.
+- Python 3.11+
+- `strands-agents` (Bedrock Converse SDK)
+- `boto3` (AWS services)
+- `pyyaml` (frontmatter parsing)
+- Optional: `httpx`, `beautifulsoup4`, `markdownify` (web_fetch)
 
 ## License
 
-Internal NCI use only. All rights reserved.
+CC0-1.0 — Public Domain

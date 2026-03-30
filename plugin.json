@@ -1,27 +1,50 @@
 {
   "name": "eagle-acquisition",
-  "version": "1.0.0",
-  "description": "NCI Office of Acquisitions intake assistant - Single agent with skill-based routing",
+  "version": "2.0.0",
+  "description": "NCI Office of Acquisitions intake assistant — 25 skills, 6 agents, full acquisition lifecycle",
   "author": "NCI OA Team",
   "agent": "supervisor",
+  "agents": [
+    "legal-counsel",
+    "market-intelligence",
+    "tech-translator",
+    "public-interest",
+    "policy"
+  ],
   "skills": [
     "oa-intake",
     "document-generator",
     "compliance",
+    "compliance-matrix",
     "knowledge-retrieval",
-    "tech-review"
+    "tech-review",
+    "ingest-document",
+    "admin-manager",
+    "admin-diagnostics",
+    "package-manager",
+    "package-finalizer",
+    "edit-document",
+    "document-history",
+    "html-report",
+    "skill-discovery",
+    "web-research",
+    "eval-criteria",
+    "cost-analysis",
+    "solicitation-builder",
+    "small-business-analysis",
+    "far-reference",
+    "clause-selector",
+    "contract-vehicles",
+    "acquisition-glossary",
+    "risk-assessment"
   ],
-  "commands": [
-    "intake",
-    "document",
-    "search",
-    "status"
-  ],
-  "data": [
-    "far-database.json",
-    "thresholds.json",
-    "contract-vehicles.json"
-  ],
+  "commands": "command-registry.json",
+  "data": {
+    "far-database": { "file": "data/far-database.json" },
+    "thresholds": { "file": "data/thresholds.json" },
+    "contract-vehicles": { "file": "data/contract-vehicles.json" },
+    "matrix": { "file": "data/matrix.json" }
+  },
   "capabilities": {
     "streaming": true,
     "tools": true,

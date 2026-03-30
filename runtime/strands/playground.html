@@ -1,0 +1,912 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>EAGLE — Strands/Bedrock Agent Flow</title>
+<style>
+:root {
+  --nci-blue: #1b365d;
+  --nci-light: #4a90d9;
+  --bedrock: #ff9900;
+  --bedrock-dark: #cc7a00;
+  --skill-green: #28a745;
+  --tool-purple: #7c3aed;
+  --agent-teal: #0d9488;
+  --warn-red: #dc3545;
+  --gray-50: #f8f9fa;
+  --gray-100: #e9ecef;
+  --gray-200: #dee2e6;
+  --gray-600: #6c757d;
+  --gray-800: #343a40;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  background: #0f172a;
+  color: #e2e8f0;
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+.header {
+  background: linear-gradient(135deg, var(--nci-blue), #2d4a7a);
+  padding: 1.2rem 2rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 3px solid var(--bedrock);
+}
+.header h1 { font-size: 1.3rem; font-weight: 700; letter-spacing: 0.5px; }
+.header .subtitle { font-size: 0.8rem; opacity: 0.7; }
+.header .badge {
+  background: var(--bedrock);
+  color: #000;
+  padding: 0.25rem 0.75rem;
+  border-radius: 20px;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+.main { display: flex; height: calc(100vh - 62px); }
+
+/* Left panel — flow diagram */
+.flow-panel {
+  flex: 1;
+  padding: 1.5rem;
+  overflow-y: auto;
+  position: relative;
+}
+
+/* Right panel — detail inspector */
+.detail-panel {
+  width: 420px;
+  background: #1e293b;
+  border-left: 1px solid #334155;
+  overflow-y: auto;
+  padding: 1.2rem;
+}
+.detail-panel h3 {
+  font-size: 0.9rem;
+  color: var(--nci-light);
+  margin-bottom: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+.detail-section {
+  background: #0f172a;
+  border: 1px solid #334155;
+  border-radius: 8px;
+  padding: 1rem;
+  margin-bottom: 1rem;
+  font-size: 0.82rem;
+  line-height: 1.6;
+}
+.detail-section h4 {
+  font-size: 0.8rem;
+  color: var(--bedrock);
+  margin-bottom: 0.5rem;
+}
+.detail-section pre {
+  background: #020617;
+  border: 1px solid #1e293b;
+  border-radius: 6px;
+  padding: 0.8rem;
+  overflow-x: auto;
+  font-size: 0.72rem;
+  line-height: 1.5;
+  color: #94a3b8;
+  white-space: pre-wrap;
+}
+.detail-section code {
+  color: #7dd3fc;
+  font-size: 0.78rem;
+}
+.tag {
+  display: inline-block;
+  padding: 0.15rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  margin-right: 0.3rem;
+}
+.tag-skill { background: rgba(40,167,69,0.2); color: var(--skill-green); }
+.tag-tool { background: rgba(124,58,237,0.2); color: var(--tool-purple); }
+.tag-agent { background: rgba(13,148,136,0.2); color: var(--agent-teal); }
+.tag-bedrock { background: rgba(255,153,0,0.2); color: var(--bedrock); }
+.tag-warn { background: rgba(220,53,69,0.15); color: var(--warn-red); }
+
+/* Flow nodes */
+.flow-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0;
+}
+.flow-node {
+  background: #1e293b;
+  border: 2px solid #334155;
+  border-radius: 12px;
+  padding: 1rem 1.4rem;
+  width: 580px;
+  cursor: pointer;
+  transition: all 0.25s ease;
+  position: relative;
+}
+.flow-node:hover {
+  border-color: var(--nci-light);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 20px rgba(74,144,217,0.15);
+}
+.flow-node.active {
+  border-color: var(--bedrock);
+  box-shadow: 0 0 20px rgba(255,153,0,0.2);
+}
+.flow-node .node-header {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-bottom: 0.5rem;
+}
+.flow-node .step-num {
+  background: var(--nci-blue);
+  color: white;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+.flow-node .node-title {
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+.flow-node .node-desc {
+  font-size: 0.78rem;
+  color: #94a3b8;
+  margin-left: 2.2rem;
+}
+.flow-node .node-badge {
+  position: absolute;
+  top: -8px;
+  right: 12px;
+}
+.flow-arrow {
+  width: 2px;
+  height: 28px;
+  background: #475569;
+  position: relative;
+}
+.flow-arrow::after {
+  content: '';
+  position: absolute;
+  bottom: -4px;
+  left: -4px;
+  width: 0;
+  height: 0;
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
+  border-top: 6px solid #475569;
+}
+.flow-arrow.active { background: var(--bedrock); }
+.flow-arrow.active::after { border-top-color: var(--bedrock); }
+
+/* Subagent branch */
+.branch-container {
+  display: flex;
+  gap: 1.5rem;
+  align-items: flex-start;
+  width: 580px;
+}
+.branch-left { flex: 1; }
+.branch-right { flex: 1; }
+.branch-node {
+  background: #1a2332;
+  border: 2px dashed #334155;
+  border-radius: 10px;
+  padding: 0.8rem 1rem;
+  cursor: pointer;
+  transition: all 0.25s ease;
+}
+.branch-node:hover {
+  border-color: var(--agent-teal);
+}
+.branch-node.active {
+  border-color: var(--agent-teal);
+  border-style: solid;
+  box-shadow: 0 0 15px rgba(13,148,136,0.2);
+}
+.branch-node .node-title { font-size: 0.82rem; }
+.branch-node .node-desc { font-size: 0.72rem; margin-left: 0; }
+.branch-label {
+  font-size: 0.7rem;
+  color: #64748b;
+  text-align: center;
+  margin-bottom: 0.4rem;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+/* Skill pills in nodes */
+.skill-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  margin-top: 0.5rem;
+  margin-left: 2.2rem;
+}
+.skill-pill {
+  background: rgba(40,167,69,0.12);
+  border: 1px solid rgba(40,167,69,0.3);
+  color: var(--skill-green);
+  padding: 0.15rem 0.5rem;
+  border-radius: 12px;
+  font-size: 0.65rem;
+  font-weight: 500;
+}
+.skill-pill.inactive {
+  background: rgba(100,116,139,0.1);
+  border-color: rgba(100,116,139,0.2);
+  color: #64748b;
+  text-decoration: line-through;
+}
+.tool-pill {
+  background: rgba(124,58,237,0.12);
+  border: 1px solid rgba(124,58,237,0.3);
+  color: var(--tool-purple);
+  padding: 0.15rem 0.5rem;
+  border-radius: 12px;
+  font-size: 0.65rem;
+}
+
+/* Controls */
+.controls {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1.2rem;
+  justify-content: center;
+}
+.btn {
+  padding: 0.5rem 1.2rem;
+  border-radius: 8px;
+  border: 1px solid #475569;
+  background: #1e293b;
+  color: #e2e8f0;
+  cursor: pointer;
+  font-size: 0.8rem;
+  transition: all 0.2s;
+}
+.btn:hover { border-color: var(--nci-light); background: #273549; }
+.btn.primary { background: var(--nci-blue); border-color: var(--nci-light); }
+.btn.primary:hover { background: #244a80; }
+.btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* Scenario selector */
+.scenario-bar {
+  display: flex;
+  gap: 0.5rem;
+  justify-content: center;
+  margin-bottom: 1rem;
+  flex-wrap: wrap;
+}
+.scenario-btn {
+  padding: 0.4rem 0.8rem;
+  border-radius: 6px;
+  border: 1px solid #334155;
+  background: transparent;
+  color: #94a3b8;
+  cursor: pointer;
+  font-size: 0.72rem;
+  transition: all 0.2s;
+}
+.scenario-btn:hover { border-color: var(--nci-light); color: #e2e8f0; }
+.scenario-btn.active { background: var(--nci-blue); border-color: var(--nci-light); color: white; }
+
+/* Warning callout */
+.callout {
+  background: rgba(220,53,69,0.08);
+  border: 1px solid rgba(220,53,69,0.25);
+  border-radius: 8px;
+  padding: 0.8rem 1rem;
+  margin: 0.8rem 0;
+  font-size: 0.78rem;
+}
+.callout-info {
+  background: rgba(74,144,217,0.08);
+  border-color: rgba(74,144,217,0.25);
+}
+.callout strong { color: var(--warn-red); }
+.callout-info strong { color: var(--nci-light); }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div>
+    <h1>EAGLE — Strands/Bedrock Agent Flow</h1>
+    <div class="subtitle">Supervisor + AgentSkills + Subagents on Bedrock Converse API</div>
+  </div>
+  <span class="badge">INTERACTIVE</span>
+</div>
+
+<div class="main">
+  <div class="flow-panel">
+    <div class="scenario-bar">
+      <button class="scenario-btn active" onclick="loadScenario('intake')">Intake ($500K CT Scanner)</button>
+      <button class="scenario-btn" onclick="loadScenario('micro')">Micro-Purchase ($8K)</button>
+      <button class="scenario-btn" onclick="loadScenario('edit')">Edit Existing SOW</button>
+    </div>
+    <div class="controls">
+      <button class="btn" id="prevBtn" onclick="prevStep()" disabled>&larr; Back</button>
+      <button class="btn primary" id="nextBtn" onclick="nextStep()">Next Step &rarr;</button>
+      <button class="btn" onclick="resetFlow()">Reset</button>
+    </div>
+    <div class="flow-container" id="flowContainer"></div>
+  </div>
+
+  <div class="detail-panel" id="detailPanel">
+    <h3>Inspector</h3>
+    <div class="detail-section">
+      <p style="color:#64748b;">Click a step or press <strong style="color:#e2e8f0">Next Step</strong> to walk through the agent flow.</p>
+    </div>
+  </div>
+</div>
+
+<script>
+const SCENARIOS = {
+  intake: {
+    title: 'New Acquisition — $500K CT Scanner',
+    userMessage: 'I need to buy a CT scanner for our imaging lab, estimated $500K, needed by Q3.',
+    steps: [
+      {
+        id: 'startup',
+        title: 'Agent Startup — AgentSkills Phase 1',
+        desc: 'Strands injects skill metadata XML into supervisor system prompt',
+        badge: 'skill-green',
+        badgeText: 'PHASE 1',
+        detail: {
+          title: 'Progressive Disclosure — Phase 1: Discovery',
+          body: `<p>The <code>AgentSkills</code> plugin fires a <span class="tag tag-skill">BeforeInvocationEvent</span> hook and injects skill metadata into the system prompt as XML:</p>
+<pre>&lt;available_skills&gt;
+  &lt;skill&gt;
+    &lt;name&gt;oa-intake&lt;/name&gt;
+    &lt;description&gt;Guide users through the NCI acquisition intake process
+      with a 4-stage workflow state machine.&lt;/description&gt;
+    &lt;location&gt;/skills/oa-intake/SKILL.md&lt;/location&gt;
+  &lt;/skill&gt;
+  &lt;skill&gt;
+    &lt;name&gt;compliance-matrix&lt;/name&gt;
+    &lt;description&gt;Query NCI/NIH acquisition compliance decision tree —
+      thresholds, required documents, vehicles.&lt;/description&gt;
+    &lt;location&gt;/skills/compliance-matrix/SKILL.md&lt;/location&gt;
+  &lt;/skill&gt;
+  &lt;skill&gt;
+    &lt;name&gt;document-generator&lt;/name&gt;
+    &lt;description&gt;Generate professional acquisition documents
+      (SOW, IGCE, AP, J&amp;A, MRR).&lt;/description&gt;
+    &lt;location&gt;/skills/document-generator/SKILL.md&lt;/location&gt;
+  &lt;/skill&gt;
+  ... (18 skills total, ~100 tokens each = ~1,800 tokens)
+&lt;/available_skills&gt;</pre>
+<div class="callout callout-info"><strong>Key:</strong> Only names + descriptions are injected at startup. Full SKILL.md instructions are NOT loaded yet — saving ~90K tokens of context.</div>`,
+        },
+        skills: ['oa-intake','compliance-matrix','document-generator','package-manager','edit-document','cost-analysis','eval-criteria','web-research','...+10 more'],
+      },
+      {
+        id: 'user-msg',
+        title: 'User Message → Bedrock Converse API',
+        desc: '"I need to buy a CT scanner for our imaging lab, estimated $500K, needed by Q3."',
+        badge: 'bedrock',
+        badgeText: 'CONVERSE',
+        detail: {
+          title: 'Bedrock Converse API Request',
+          body: `<p>Strands sends the full request to Bedrock:</p>
+<pre>{
+  "modelId": "us.anthropic.claude-sonnet-4-6",
+  "system": [
+    {"text": "Current datetime: 2026-03-27T16:45:00 UTC\\n
+      Tenant: nci-oa | User: john.doe\\n\\n
+      [supervisor agent.md body — routing rules, research cascade,
+       checklist-first generation, threshold table...]\\n\\n
+      --- AVAILABLE SLASH COMMANDS ---\\n
+      /intake: Start acquisition intake...\\n
+      /matrix: Query compliance decision engine...\\n\\n
+      <span style="color:#28a745">&lt;available_skills&gt;
+        &lt;skill&gt;&lt;name&gt;oa-intake&lt;/name&gt;...&lt;/skill&gt;
+        &lt;skill&gt;&lt;name&gt;compliance-matrix&lt;/name&gt;...&lt;/skill&gt;
+        ... (18 skill metadata entries)
+      &lt;/available_skills&gt;</span>"}
+  ],
+  "messages": [
+    {"role": "user", "content": [
+      {"text": "I need to buy a CT scanner..."}
+    ]}
+  ],
+  "toolConfig": {
+    "tools": [
+      <span style="color:#7c3aed">{"toolSpec": {"name": "skills", ...}},</span>
+      {"toolSpec": {"name": "create_document", ...}},
+      {"toolSpec": {"name": "manage_package", ...}},
+      {"toolSpec": {"name": "query_compliance_matrix", ...}},
+      ... (25 service tools + 1 skills tool)
+    ]
+  }
+}</pre>
+<div class="callout callout-info"><strong>Note:</strong> The <code>skills</code> tool is auto-registered by the AgentSkills plugin. It's what the LLM calls to activate a skill (Phase 2).</div>`,
+        },
+      },
+      {
+        id: 'skill-activate',
+        title: 'Bedrock Response — Activate "oa-intake" Skill',
+        desc: 'LLM sees skill metadata, calls skills(skill_name="oa-intake") to load full instructions',
+        badge: 'skill-green',
+        badgeText: 'PHASE 2',
+        detail: {
+          title: 'Progressive Disclosure — Phase 2: Activation',
+          body: `<p>Bedrock returns <span class="tag tag-bedrock">stopReason: "tool_use"</span> with a call to the <code>skills</code> tool:</p>
+<pre>// Bedrock response
+{
+  "stopReason": "tool_use",
+  "output": {"message": {"content": [
+    {"text": "I'll help with this CT scanner acquisition..."},
+    <span style="color:#28a745">{"toolUse": {
+      "toolUseId": "sk_001",
+      "name": "skills",
+      "input": {"skill_name": "oa-intake"}
+    }}</span>
+  ]}}
+}</pre>
+<p>The AgentSkills plugin handles this tool call internally:</p>
+<ol style="margin-left:1.2rem; margin-top:0.5rem; color:#94a3b8;">
+  <li>Looks up <code>oa-intake</code> in the skill registry</li>
+  <li>Reads <code>skills/oa-intake/SKILL.md</code> from disk</li>
+  <li>Returns the full markdown body (~4,500 tokens) as a tool result</li>
+  <li>Tracks activation in <code>agent.state["activated_skills"]</code></li>
+</ol>
+<pre>// Tool result returned to Bedrock
+{"toolResult": {
+  "toolUseId": "sk_001",
+  "status": "success",
+  "content": [{"text":
+    "# OA Intake Skill - Acquisition Request Workflow\\n\\n
+     ## Reference Data\\n
+     Load matrix.json for all threshold determinations...\\n\\n
+     ## Phase 1: Minimal Intake Form\\n
+     | Field | Question | Why We Ask |\\n
+     | Requirement | What do you need? | ...\\n
+     ... (full SKILL.md body)"}]
+}}</pre>
+<div class="callout callout-info"><strong>Key:</strong> The skill instructions are now in the conversation context (as a tool result), NOT the system prompt. The LLM follows these instructions for subsequent turns.</div>`,
+        },
+      },
+      {
+        id: 'tool-matrix',
+        title: 'Supervisor Calls query_compliance_matrix',
+        desc: 'Following oa-intake instructions: determine threshold band and required docs for $500K',
+        badge: 'tool-purple',
+        badgeText: 'TOOL',
+        detail: {
+          title: 'Service Tool Call — Compliance Matrix',
+          body: `<p>Following the oa-intake skill instructions ("Load matrix.json for all threshold determinations"), the supervisor calls a <span class="tag tag-tool">service tool</span>:</p>
+<pre>// Bedrock response (second loop iteration)
+{"toolUse": {
+  "name": "query_compliance_matrix",
+  "input": {
+    "operation": "query",
+    "contract_value": 500000,
+    "is_services": false,
+    "acquisition_method": "negotiated"
+  }
+}}</pre>
+<p>This is a <code>@tool</code> function in <code>tool_definitions.py</code>, NOT a skill. It executes Python code that reads <code>data/matrix.json</code>:</p>
+<pre>// Tool result
+{
+  "threshold_band": "Above SAT ($350K+)",
+  "far_authority": "FAR Part 15 — Negotiated",
+  "required_documents": [
+    "SOW", "IGCE", "Market Research",
+    "Acquisition Plan", "D&F", "Tech Eval Plan"
+  ],
+  "approval_chain": "HCA (>$350K)",
+  "warnings": ["IT acquisition — verify Section 508"]
+}</pre>`,
+        },
+      },
+      {
+        id: 'tool-package',
+        title: 'Supervisor Calls manage_package(create)',
+        desc: 'Creates acquisition package early per supervisor instructions',
+        badge: 'tool-purple',
+        badgeText: 'TOOL',
+        detail: {
+          title: 'Package Creation — Early Per Supervisor Rules',
+          body: `<p>The supervisor agent.md says: <em>"As soon as you have requirement + value + type, IMMEDIATELY call manage_package(create)"</em></p>
+<pre>{"toolUse": {
+  "name": "manage_package",
+  "input": {
+    "operation": "create",
+    "title": "CT Scanner for NCI Imaging Lab",
+    "estimated_value": 500000,
+    "requirement_type": "supplies",
+    "acquisition_method": "negotiated"
+  }
+}}</pre>
+<pre>// Result
+{
+  "package_id": "PKG-nci-27001",
+  "status": "intake",
+  "required_documents": ["sow","igce","market_research",
+    "acquisition_plan","eval_criteria"],
+  "backfill_count": 0
+}</pre>`,
+        },
+      },
+      {
+        id: 'subagent-call',
+        title: 'Supervisor Delegates to market-intelligence Subagent',
+        desc: 'Passes query string — subagent gets its OWN skills and tools, NOT the supervisor\'s',
+        badge: 'agent-teal',
+        badgeText: 'SUBAGENT',
+        isBranch: true,
+        detail: {
+          title: 'Agents-as-Tools — Context Handoff',
+          body: `<p>The supervisor decides market research is needed. In sm_eagle, each subagent is a <code>@tool</code> function that spawns a fresh <code>Agent()</code>:</p>
+<pre>@tool(name="market_intelligence")
+def market_intelligence_tool(query: str) -> str:
+    """Conducts market research, vendor analysis, pricing..."""
+
+    <span style="color:#28a745"># Subagent gets its OWN AgentSkills plugin
+    sub_skills = AgentSkills(skills="./skills/web-research/")</span>
+
+    sub_agent = Agent(
+        model=bedrock_model,
+        system_prompt=<span style="color:#0d9488">"agents/market-intelligence/agent.md body"</span>,
+        tools=[knowledge_search, knowledge_fetch, search_far,
+               web_search, web_fetch, create_document],
+        <span style="color:#28a745">plugins=[sub_skills],  # scoped skills</span>
+    )
+    return str(sub_agent(query))  # only query passes</pre>
+
+<div class="callout"><strong>Sub-agents do NOT inherit the supervisor's skills.</strong> Each agent is fully independent:
+<ul style="margin:0.4rem 0 0 1.2rem; color:#94a3b8;">
+<li>Own <code>system_prompt</code> (from agent.md)</li>
+<li>Own <code>tools</code> list (scoped per agent)</li>
+<li>Own <code>plugins</code> (can have AgentSkills or none)</li>
+<li>Fresh conversation (no parent history)</li>
+<li>Only the <code>query</code> string is passed from parent</li>
+</ul></div>
+
+<p style="margin-top:0.8rem">The subagent runs its own Bedrock Converse loop:</p>
+<pre>// Subagent's Converse request (separate from supervisor)
+{
+  "system": [{"text": "You are the market-intelligence specialist.
+    [agent.md body: vendor research, pricing, GSA schedules...]
+    <span style="color:#28a745">&lt;available_skills&gt;
+      &lt;skill&gt;&lt;name&gt;web-research&lt;/name&gt;...&lt;/skill&gt;
+    &lt;/available_skills&gt;</span>"}],
+  "messages": [{"role":"user", "content":[
+    {"text": "Research CT scanner vendors, pricing, and
+     small business availability for $500K NCI acquisition"}
+  ]}],
+  "toolConfig": {"tools": [
+    {"toolSpec": {"name": "knowledge_search", ...}},
+    {"toolSpec": {"name": "web_search", ...}},
+    {"toolSpec": {"name": "web_fetch", ...}},
+    {"toolSpec": {"name": "create_document", ...}},
+    <span style="color:#28a745">{"toolSpec": {"name": "skills", ...}}</span>
+  ]}
+}</pre>`,
+        },
+      },
+      {
+        id: 'subagent-return',
+        title: 'Subagent Returns Research → Supervisor Continues',
+        desc: 'Market research report returned as tool result; supervisor resumes with full context',
+        badge: 'bedrock',
+        badgeText: 'RETURN',
+        detail: {
+          title: 'Context Return — Subagent → Supervisor',
+          body: `<p>The subagent's entire output is returned as a single <span class="tag tag-tool">tool_result</span> to the supervisor:</p>
+<pre>// Returned to supervisor's Converse loop
+{"toolResult": {
+  "toolUseId": "sub_001",
+  "name": "market_intelligence",
+  "status": "success",
+  "content": [{"text":
+    "## Market Research Findings: CT Scanner\\n\\n
+     ### Vendors Identified\\n
+     | Vendor | Size | NAICS | Vehicles |\\n
+     | GE Healthcare | Large | 334517 | GSA MAS |\\n
+     | Siemens | Large | 334517 | NITAAC |\\n
+     | Canon Medical | Large | 334517 | GSA MAS |\\n\\n
+     ### Pricing Data\\n
+     GSA Schedule range: $380K - $620K\\n
+     Median: $485K\\n\\n
+     ### Small Business Analysis\\n
+     No small business vendors for CT scanners (OEM market).
+     Set-aside not recommended.\\n\\n
+     ### Sources\\n
+     1. GSA Advantage - accessed 2026-03-27\\n
+     2. SAM.gov vendor search - 334517"}]
+}}</pre>
+<div class="callout callout-info"><strong>Key:</strong> The supervisor retains its full conversation history (user message, skill activation, compliance matrix, package creation). The subagent's response is added as a tool result. The supervisor then continues its agentic loop.</div>`,
+        },
+      },
+      {
+        id: 'response',
+        title: 'Supervisor Responds to User',
+        desc: 'Synthesizes intake determination + compliance matrix + market research into recommendation',
+        badge: 'nci-blue',
+        badgeText: 'RESPONSE',
+        detail: {
+          title: 'Final Response — End Turn',
+          body: `<p>Bedrock returns <span class="tag tag-bedrock">stopReason: "end_turn"</span>. The supervisor synthesizes all gathered data:</p>
+<pre style="color:#e2e8f0; background:#0f172a;">## Acquisition Summary
+
+📦 Package Created: <strong>PKG-nci-27001</strong>
+**Requirement:** CT Scanner for NCI Imaging Lab
+**Value:** $500,000 → Above SAT (FAR Part 15)
+**Type:** Supplies — Negotiated Acquisition
+
+### Compliance Determination
+- **Threshold:** Above SAT ($350K+) per FAR 2.101
+- **Method:** Full & Open Competition (FAR Part 15)
+- **Approval:** HCA
+
+### Market Research (Preliminary)
+- 3 vendors identified (GE, Siemens, Canon)
+- GSA Schedule range: $380K–$620K
+- No small business set-aside (OEM market)
+
+### Required Documents
+☐ Statement of Work (SOW)
+☐ IGCE — Independent Cost Estimate
+☐ Market Research Report
+☐ Acquisition Plan (FAR 7.105)
+☐ Technical Evaluation Plan
+
+**Next:** Shall I start with the SOW?</pre>`,
+        },
+      },
+    ],
+  },
+  micro: {
+    title: 'Micro-Purchase — $8K Lab Supplies',
+    userMessage: 'I need to order $8K worth of pipette tips and lab consumables.',
+    steps: [
+      { id: 's1', title: 'AgentSkills Phase 1 — Metadata Injection', desc: '18 skill names + descriptions injected as XML (~1,800 tokens)', badge: 'skill-green', badgeText: 'PHASE 1',
+        detail: { title: 'Same startup for every request', body: '<p>Same XML injection as before — skill metadata is injected on every invocation via <code>BeforeInvocationEvent</code> hook. The plugin refreshes the XML block each time (removes old, appends new).</p>' } },
+      { id: 's2', title: 'User Message → Bedrock', desc: '"I need to order $8K worth of pipette tips and lab consumables."', badge: 'bedrock', badgeText: 'CONVERSE',
+        detail: { title: 'Intent Detection', body: '<p>The supervisor sees "$8K" → micro-purchase territory. The supervisor agent.md has explicit micro-purchase routing rules.</p>' } },
+      { id: 's3', title: 'Activate "oa-intake" Skill + Compliance Matrix', desc: 'Confirms micro-purchase threshold ($8K < $15K MPT), determines simplified document set', badge: 'skill-green', badgeText: 'PHASE 2',
+        detail: { title: 'No subagent needed', body: `<p>For micro-purchases, the supervisor handles everything directly — no specialist subagent needed.</p>
+<pre>query_compliance_matrix(contract_value=8000)
+→ threshold: "Micro-Purchase (FAR 13.2)"
+→ required_docs: ["son_products", "price_reasonableness",
+   "required_sources", "purchase_request"]
+→ No SOW, IGCE, or AP required</pre>
+<div class="callout callout-info"><strong>Key:</strong> The supervisor does NOT delegate to subagents for simple flows. Skills give it enough instruction to handle micro-purchases directly.</div>` } },
+      { id: 's4', title: 'Supervisor Responds Directly', desc: 'Asks: "Are you the requestor or the purchase card holder?" to determine workflow', badge: 'nci-blue', badgeText: 'RESPONSE',
+        detail: { title: 'Role Detection', body: '<p>Per the supervisor\'s micro-purchase routing rules, it asks for the user role before generating documents. Different roles get different document sets.</p>' } },
+    ],
+  },
+  edit: {
+    title: 'Edit Existing SOW — Period of Performance',
+    userMessage: 'Change the SOW period of performance from 12 months to 18 months.',
+    steps: [
+      { id: 'e1', title: 'AgentSkills Phase 1 — Metadata Injection', desc: '18 skill metadata entries in XML', badge: 'skill-green', badgeText: 'PHASE 1',
+        detail: { title: 'Startup', body: '<p>Same XML injection. The supervisor sees all 18 skill descriptions.</p>' } },
+      { id: 'e2', title: 'User Message → Bedrock', desc: '"Change the SOW period of performance from 12 months to 18 months."', badge: 'bedrock', badgeText: 'CONVERSE',
+        detail: { title: 'Intent: Document Edit', body: '<p>Supervisor detects "change the SOW" → routes to <code>edit-document</code> skill, not <code>document-generator</code>.</p>' } },
+      { id: 'e3', title: 'Activate "edit-document" Skill', desc: 'Loads full SKILL.md with edit workflow: fetch → find text → apply edits', badge: 'skill-green', badgeText: 'PHASE 2',
+        detail: { title: 'Skill Activation', body: `<pre>skills(skill_name="edit-document")
+→ Returns full edit-document/SKILL.md body:
+  "Apply precise, targeted edits to existing DOCX...
+   1. get_latest_document(package_id, 'sow')
+   2. Fetch document content
+   3. Construct edits array
+   4. Call edit_docx_document"</pre>` } },
+      { id: 'e4', title: 'Call get_latest_document → edit_docx_document', desc: 'Fetches current SOW, applies targeted text replacement preserving formatting', badge: 'tool-purple', badgeText: 'TOOLS',
+        detail: { title: 'Tool Chain', body: `<pre>// Step 1: Get current document
+get_latest_document(package_id="PKG-nci-27001", doc_type="sow")
+→ {s3_key: "eagle/nci/documents/sow_20260315.docx", version: "v1"}
+
+// Step 2: Apply edit
+edit_docx_document(
+  document_key="eagle/nci/documents/sow_20260315.docx",
+  edits=[{
+    "search_text": "period of performance shall be 12 months",
+    "replacement_text": "period of performance shall be 18 months
+      with two 6-month option periods"
+  }]
+)
+→ {status: "success", version: "v2"}</pre>
+<div class="callout callout-info"><strong>No subagent needed.</strong> The supervisor follows the edit-document skill instructions and calls service tools directly. Skills guide behavior; tools execute actions.</div>` } },
+      { id: 'e5', title: 'Supervisor Responds', desc: 'SOW v1 → v2: Period of performance updated. Warns about cross-document impact.', badge: 'nci-blue', badgeText: 'RESPONSE',
+        detail: { title: 'Response + Cross-Doc Warning', body: `<pre style="color:#e2e8f0;">## Document Updated: SOW v1 → v2
+
+✅ Period of performance: 12 months → 18 months
+   with two 6-month option periods
+
+⚠️ This change may affect:
+  - IGCE (cost estimate for extended period)
+  - Acquisition Plan (timeline section)
+  - Eval Criteria (if PoP is an evaluation factor)
+
+Want me to update these documents too?</pre>` } },
+    ],
+  },
+};
+
+let currentScenario = 'intake';
+let currentStep = -1;
+
+function loadScenario(name) {
+  currentScenario = name;
+  currentStep = -1;
+  document.querySelectorAll('.scenario-btn').forEach(b => b.classList.remove('active'));
+  event.target.classList.add('active');
+  renderFlow();
+  renderDetail(null);
+  updateButtons();
+}
+
+function renderFlow() {
+  const scenario = SCENARIOS[currentScenario];
+  const container = document.getElementById('flowContainer');
+  let html = '';
+
+  scenario.steps.forEach((step, i) => {
+    const isActive = i <= currentStep;
+    const isCurrent = i === currentStep;
+
+    if (i > 0) {
+      html += `<div class="flow-arrow ${isActive ? 'active' : ''}"></div>`;
+    }
+
+    if (step.isBranch) {
+      html += `
+        <div class="flow-node ${isCurrent ? 'active' : ''}" onclick="goToStep(${i})" data-step="${i}">
+          <div class="node-badge"><span class="tag tag-${step.badge}">${step.badgeText}</span></div>
+          <div class="node-header">
+            <div class="step-num" style="${isActive ? 'background:var(--agent-teal)' : ''}">${i+1}</div>
+            <div class="node-title">${step.title}</div>
+          </div>
+          <div class="node-desc">${step.desc}</div>
+          <div style="display:flex; gap:0.5rem; margin-top:0.6rem; margin-left:2.2rem;">
+            <div style="flex:1; background:rgba(13,148,136,0.08); border:1px dashed rgba(13,148,136,0.3); border-radius:8px; padding:0.5rem; text-align:center;">
+              <div style="font-size:0.65rem; color:var(--agent-teal); text-transform:uppercase; letter-spacing:0.5px; margin-bottom:0.3rem;">Supervisor Context</div>
+              <div style="font-size:0.68rem; color:#94a3b8;">18 skills + 25 tools<br>Full conversation history</div>
+            </div>
+            <div style="font-size:1.2rem; color:#475569; display:flex; align-items:center;">→</div>
+            <div style="flex:1; background:rgba(220,53,69,0.06); border:1px dashed rgba(220,53,69,0.25); border-radius:8px; padding:0.5rem; text-align:center;">
+              <div style="font-size:0.65rem; color:var(--warn-red); text-transform:uppercase; letter-spacing:0.5px; margin-bottom:0.3rem;">Subagent Context</div>
+              <div style="font-size:0.68rem; color:#94a3b8;">Own skills (scoped)<br>Own tools (6 KB+doc)<br>Only query string passes</div>
+            </div>
+          </div>
+        </div>`;
+    } else {
+      const badgeColor = step.badge === 'bedrock' ? 'tag-bedrock' :
+                         step.badge === 'skill-green' ? 'tag-skill' :
+                         step.badge === 'tool-purple' ? 'tag-tool' :
+                         step.badge === 'agent-teal' ? 'tag-agent' : 'tag-bedrock';
+      html += `
+        <div class="flow-node ${isCurrent ? 'active' : ''}" onclick="goToStep(${i})" data-step="${i}">
+          <div class="node-badge"><span class="tag ${badgeColor}">${step.badgeText}</span></div>
+          <div class="node-header">
+            <div class="step-num" style="${isActive ? 'background:var(--nci-light)' : ''}">${i+1}</div>
+            <div class="node-title">${step.title}</div>
+          </div>
+          <div class="node-desc">${step.desc}</div>
+          ${step.skills ? `<div class="skill-pills">${step.skills.map(s => `<span class="skill-pill">${s}</span>`).join('')}</div>` : ''}
+        </div>`;
+    }
+  });
+
+  container.innerHTML = html;
+}
+
+function renderDetail(step) {
+  const panel = document.getElementById('detailPanel');
+  if (!step) {
+    const scenario = SCENARIOS[currentScenario];
+    panel.innerHTML = `
+      <h3>Inspector</h3>
+      <div class="detail-section">
+        <h4>${scenario.title}</h4>
+        <p style="color:#94a3b8; margin-top:0.5rem;">User: "${scenario.userMessage}"</p>
+        <p style="color:#64748b; margin-top:0.8rem;">Click <strong style="color:#e2e8f0">Next Step →</strong> to walk through the Strands/Bedrock agent flow.</p>
+      </div>
+      <div class="detail-section">
+        <h4>Legend</h4>
+        <p><span class="tag tag-skill">PHASE 1/2</span> AgentSkills progressive disclosure</p>
+        <p><span class="tag tag-bedrock">CONVERSE</span> Bedrock Converse API call</p>
+        <p><span class="tag tag-tool">TOOL</span> @tool function execution</p>
+        <p><span class="tag tag-agent">SUBAGENT</span> Agents-as-tools delegation</p>
+      </div>
+      <div class="detail-section">
+        <h4>Architecture</h4>
+        <pre>AgentSkills plugin
+  ├─ Phase 1: XML metadata → system prompt
+  ├─ Phase 2: skills() tool → full SKILL.md
+  └─ Phase 3: resource files on-demand
+
+Supervisor Agent
+  ├─ system_prompt = agent.md + skill XML
+  ├─ tools = 25 service @tool functions
+  ├─ plugins = [AgentSkills]
+  └─ Bedrock Converse API loop:
+      → send request
+      ← if tool_use: execute, loop
+      ← if end_turn: return response</pre>
+      </div>`;
+    return;
+  }
+
+  panel.innerHTML = `
+    <h3>Step ${currentStep + 1} — Detail</h3>
+    <div class="detail-section">
+      <h4>${step.detail.title}</h4>
+      ${step.detail.body}
+    </div>`;
+}
+
+function nextStep() {
+  const steps = SCENARIOS[currentScenario].steps;
+  if (currentStep < steps.length - 1) {
+    currentStep++;
+    renderFlow();
+    renderDetail(steps[currentStep]);
+    updateButtons();
+  }
+}
+
+function prevStep() {
+  if (currentStep > 0) {
+    currentStep--;
+    renderFlow();
+    renderDetail(SCENARIOS[currentScenario].steps[currentStep]);
+    updateButtons();
+  } else if (currentStep === 0) {
+    currentStep = -1;
+    renderFlow();
+    renderDetail(null);
+    updateButtons();
+  }
+}
+
+function goToStep(i) {
+  currentStep = i;
+  renderFlow();
+  renderDetail(SCENARIOS[currentScenario].steps[i]);
+  updateButtons();
+}
+
+function resetFlow() {
+  currentStep = -1;
+  renderFlow();
+  renderDetail(null);
+  updateButtons();
+}
+
+function updateButtons() {
+  const steps = SCENARIOS[currentScenario].steps;
+  document.getElementById('prevBtn').disabled = currentStep < 0;
+  document.getElementById('nextBtn').disabled = currentStep >= steps.length - 1;
+}
+
+// Keyboard nav
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'ArrowRight' || e.key === ' ') { e.preventDefault(); nextStep(); }
+  if (e.key === 'ArrowLeft') { e.preventDefault(); prevStep(); }
+  if (e.key === 'r') { resetFlow(); }
+});
+
+// Init
+renderFlow();
+renderDetail(null);
+</script>
+</body>
+</html>
